@@ -1,6 +1,5 @@
 ### Author: Kevin Zolea ###
 ### Shiny App for Roadsalt Project ###
-
 if (!require(pacman)) {
   #install.packages('pacman')
   
@@ -9,7 +8,7 @@ pacman::p_load("ggplot2","tidyr","plyr","dplyr","readxl","shinycssloaders",
                "readr","cowplot","lubridate","scales","shinydashboardPlus",
                "gridExtra","stringr","ggpmisc","data.table","rlang","purrr",
                "shiny","shinydashboard","DT","leaflet","rgdal","sf","rmapshaper",
-               "rsconnect","shinyjs")
+               "rsconnect","shinyjs","shinyWidgets")
 
 library(ggplot2)
 library(tidyr)
@@ -33,6 +32,7 @@ library(rsconnect)
 library(shinyjs)
 library(rgeos)
 library(leaflet.extras)
+library(shinyWidgets)
 
 ###########################################################################################
 ### read in data  ###
@@ -41,12 +41,74 @@ roadsalt_data<-read_tsv("cleanest_qa_dataset.tsv")%>%
   mutate(month = lubridate::month(stdate))
 ### Data for correlation plots ###
 roadsalt_corr<-read_tsv("cleanest_data_for_correlations.tsv")%>%
-  filter(!tds == "NA")%>%
-  filter(!Specific_conductance == "NA")%>%
-  filter(!Chloride == "NA")
+  dplyr::filter(!tds == "NA")%>%
+  dplyr::filter(!Specific_conductance == "NA")%>%
+  dplyr::filter(!Chloride == "NA")%>%
+  dplyr::group_by(locid,stdate)%>%
+  dplyr::mutate(ratio = format(tds/Specific_conductance,digits = 1))%>%
+  dplyr::filter(!ratio >1 & !ratio < .4)
+### Make dataframe calculating the median,mean, and maximum TDS for all sites in WMA 4 ###
+wma4_tds_stats<-roadsalt_corr%>%
+  dplyr::filter(WMA_tds == 4)%>%
+  dplyr::group_by(locid)%>%
+  dplyr::summarise(Median = median(tds),Mean = mean(tds), Max = max(tds))
+### Filter correlation data to have north/south based on WMA ###
+## Removes WMA's that are south ###
+remove_south=c("12","13","14","15","16","17","18","19","20")
+north_corr_road<-roadsalt_corr%>%
+  filter(!WMA %in% remove_south)
+#### Creates dataframe of chloride road salt data for south part of state
+south_corr_road<-roadsalt_corr %>%
+  filter(WMA %in% remove_south)
+
 ### Change column names ###
 #names(roadsalt_corr)[names(roadsalt_corr) == "Specific_conductance"]<- "Specific conductance"
 #names(roadsalt_corr)[names(roadsalt_corr) == "tds"]<- "Total dissolved solids"
+###########################################################################################
+### Read in physiographic province dataset with monitoring locations matched to province ###
+physio_monitoring_stations<-read_xlsx("physio_monit_stations.xlsx",col_names = T)
+### Need to do a join to get physio_monitoring_stations data matched with roadsalt_corr data ###
+### In order to this, have to make cuts on roadsalt_corr dataset to locids column so they can match with physio_monitoring_stations dataset ###
+test_road_corr<-roadsalt_corr
+test_road_corr$NewStation<-test_road_corr$locid
+
+test_road_corr$NewStation<-gsub("USGS-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-gsub("21NJDEP1-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-gsub("NJDEP_BB-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-gsub("NJDEP_BFBM-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-gsub("11NPSWRD-MORR_","",test_road_corr$NewStation)
+test_road_corr$NewStation<-gsub("BTMUA-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-gsub("DRBC-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-gsub("31DRBCSP-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-gsub("31DELRBC-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-gsub("31DELRBC_WQX-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-gsub("KWMNDATA-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-gsub("GSWA-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-gsub("FOB-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-sub("SPC-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-sub("NJDEP_BEAR-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-sub("NJPC-","",test_road_corr$NewStation)
+test_road_corr$NewStation<-sub("NJDEP_DSREH-","",test_road_corr$NewStation)
+
+### Filter physio_monitoring_stations for just stations inside roadsalt_corr ###
+physio_wanted<-unique(test_road_corr$NewStation)
+physio_monitoring_stations<-physio_monitoring_stations%>%
+  dplyr::filter(NewStation %in% physio_wanted)
+### Now join physio_monitoring_stations to test_roadsalt_corr ###
+physio_corr<-left_join(test_road_corr,physio_monitoring_stations,by = "NewStation")
+###########################################################################################
+### Make filtered dataset for each Province ###
+coastal_plain_df<-physio_corr%>%
+  dplyr::filter(PROVINCE == "Coastal Plain")
+
+piedmont_df<-physio_corr%>%
+  dplyr::filter(PROVINCE == "Piedmont")
+
+highlands_df<-physio_corr%>%
+  dplyr::filter(PROVINCE == "Highlands")
+
+valley_ridge_df<-physio_corr%>%
+  dplyr::filter(PROVINCE == "Valley and Ridge")
 ###########################################################################################
 ### Read in shapefiles and Impaired HUC table ###
 NJ_Map_Road<-st_read(getwd(),layer="2014_NJ_Integrated_Report_AU")
@@ -72,7 +134,7 @@ names(st_geometry(good_imp_map_df)) = NULL
 ### Make dataframe to be displayed under leaflet map ###
 leaflet_df<-imp_huc_table%>%
   dplyr::select('Assessment Unit Name',"HUC14",'Watershed Management Area',
-         'Watershed Management Area Names','Year 1st Listed')
+                'Watershed Management Area Names','Year 1st Listed')
 ###########################################################################################
 ### theme for plots ###
 shiny_plot_theme<- theme_linedraw()+
@@ -83,6 +145,8 @@ shiny_plot_theme<- theme_linedraw()+
         panel.background = element_blank(),
         legend.position = "bottom",
         legend.background = element_blank(),
+        legend.title = element_blank(),
+        plot.caption = element_text(color = "navy",face = "bold",size = 12),
         legend.text=element_text(size=10, face="bold"),
         plot.subtitle = element_text(size=15, face="bold",vjust=0.5,hjust = 0.5))
 ###########################################################################################
@@ -109,7 +173,7 @@ sidebar<-dashboardSidebar(
   sidebarMenu(id = "left_sidebar",
     tags$li(class="dropdown",
             tags$a(href="https://www.nj.gov/dep/", target="_blank",
-                   tags$img(width= 100,height = 100,src="https://www.nj.gov/dep/awards/images/deplogoB.jpg"))
+                   img(width= 100,height = 100,src="https://www.nj.gov/dep/awards/images/deplogoB.jpg",class="road_pics"))
     ),
     menuItem("Home",
              tabName = "home",
@@ -174,7 +238,14 @@ body<- dashboardBody(
     
     .content-wrapper, .right-side {
       background-color: #CCCCCC;
-    }'
+    }
+    
+    .road_pics{
+        width: auto;
+        height: 100%;
+        max-height: 20vh;
+    }
+    '
     
   ))),
 ### This uses custom CSS to create a landing page for app ###
@@ -196,9 +267,9 @@ body<- dashboardBody(
     tabItem(tabName = "home",
             h1("Welcome to the NJDEP Road Salt Project App!"),
             h3("Introduction:"),
-            "This is a project of the Division of Water Monitoring and Standards",a("(DWMS)",href = "https://www.state.nj.us/dep/wms/"),
-            "& the Bureau of Environmental Analysis, Restoration and Standards",a("(BEARS)",href = "https://www.state.nj.us/dep/wms/bears/index.html"),
-    ",within the New Jersey Department of Environmental Protection",a("(NJDEP).",href = "https://www.nj.gov/dep/"),
+            "This is a project of the Division of Water Monitoring and Standards",a("(DWMS)",href = "https://www.state.nj.us/dep/wms/",target = "_blank"),
+            "& the Bureau of Environmental Analysis, Restoration and Standards",a("(BEARS)",href = "https://www.state.nj.us/dep/wms/bears/index.html",target = "_blank"),
+    ",within the New Jersey Department of Environmental Protection",a("(NJDEP).",href = "https://www.nj.gov/dep/",target = "_blank"),
     "For more information on road salt, click on the notification icon in the top header.",
             h3("How to use App:"),
     "Start by clicking through the side menu on the left and going through the different options available.
@@ -208,9 +279,12 @@ body<- dashboardBody(
     giving you options to customize the different plots available. The Correlation Plots tab gives you options to see the different
     correlations between the parameters.",
     br(),br(),br(),
-    img(width = 350, height = 200, src = "Picture2.png"),
-    img(width = 350, height = 200,src = "Picture1.png")),
+    img(width = 350, height = 200, src = "Picture2.png",class="road_pics"),
+    img(width = 350, height = 200,src = "Picture1.png",class="road_pics")),
     tabItem(tabName = "data",
+            infoBox("Total # of HUCs:",810,color = "navy",icon = icon("map-marker")),
+            infoBox("Total # of Monitoring Stations:",3644,color = "navy",icon = icon("thermometer-empty")),
+            infoBox("Study Year Range:","1997-2018",color = "navy",icon = icon("calendar")),
             DT::dataTableOutput("Table1")%>%
               withSpinner(type = 5,color = "blue"),
             downloadButton('downloadData','Download Data')),
@@ -219,7 +293,7 @@ body<- dashboardBody(
                              collapsible = T,
                              tags$b("The following polygons in the map are the"),
                              a("assessment units impaired ",
-                               href = "https://www.state.nj.us/dep/wms/bears/assessment.htm" ),
+                               href = "https://www.state.nj.us/dep/wms/bears/assessment.htm",target = "_blank"),
                              tags$b("for TDS\nin the 2014 303(d) list")))%>%
             fluidRow(box(width=12,leafletOutput("leaf")%>%
               withSpinner(type=5,color = "blue"))),
@@ -233,15 +307,32 @@ body<- dashboardBody(
               box(width = 6,plotOutput("plot4")%>%withSpinner(type = 5, color = "blue")))),
     tabItem(tabName = "corr",
             fluidRow(
-              box(width = 12, plotOutput("plot5")%>%withSpinner(type = 5, color = "blue"),
-                  downloadButton("downloadplot","Download Plot"))),
+              tabBox(width = 12,tabPanel("Site Specific",plotOutput("plot5")%>%withSpinner(type = 5, color = "blue")),
+                     tabPanel("North/South Regions (WMAs)",plotOutput("plot7")%>%withSpinner(type = 5, color = "blue"),
+                              plotOutput("plot8")%>%withSpinner(type = 5, color = "blue")),
+                     tabPanel("Physiographic Provinces",fluidRow(plotOutput("plot9")%>%withSpinner(type = 5, color = "blue"),
+                                                                 plotOutput("plot10")%>%withSpinner(type = 5, color = "blue")),
+                              fluidRow(plotOutput("plot11")%>%withSpinner(type = 5, color = "blue"),
+                                       plotOutput("plot12")%>%withSpinner(type = 5, color = "blue"))),
+                     tabPanel("Land Use",plotOutput("plot6")%>%withSpinner(type = 5, color = "blue")),
+                  downloadButton("downloadplot","Download Plot"),
+                  awesomeCheckbox(inputId = "statewide",
+                                  label = "Show Statewide Regression Line",
+                                  value = FALSE))),
             fluidRow(
               box(selectInput("x",label =em("Select X Variable:",style="color:Navy;font-weight: bold;"),
                               choices = c("tds","Chloride","Specific_conductance"),selected = "Specific_conductance")),
               box(selectInput("y",label = em("Select Y Variable:",style = "color:Navy;font-weight: bold;"),
                               choices =c("tds","Chloride","Specific_conductance") ,selected = "tds")),
-              box(uiOutput("huc1")),
-              box(uiOutput("locid1"))))),
+              #box(selectizeInput("huc1",label =em("Select HUC:",style="color:Navy;font-weight: bold;"),
+              #                                     choices = list("Impaired HUCs for TDS:"=as.character(unique(impaired_huc_list)),
+              #                                                    "All Other HUCs:"=as.character(unique(roadsalt_corr$HUC14))),
+              #                   selected = "HUC02030103110020"))))),
+                  box(selectizeInput("huc1",label =em("Select HUC:",style="color:Navy;font-weight: bold;"),
+                   choices = sort(as.character(unique(roadsalt_corr$HUC14))),
+                   selected = "HUC02030103110020"))))),
+              #box(uiOutput("huc1"))))),
+              #box(uiOutput("locid1"))))),
   tags$head(
     tags$style(HTML("
                     .shiny-output-error-validation {
@@ -393,34 +484,40 @@ server<- function(input,output,session){
  }) 
 
 ###########################################################################################  
+### NOT USING THIS CODE ANYMORE BUT KEEP FOR LEARNING PURPOSES!!!!!! ###
+ ####                                   ####### 
 ### Create reactive dataframe for huc & locid correlations ###
- output$huc1<- renderUI({
-   selectizeInput("huc",label =em("Select HUC:",style="color:Navy;font-weight: bold;"),
-                  choices = list("Impaired HUCs for TDS:"=impaired_huc_list,
-                                 "All Other HUCs:"=as.character(unique(roadsalt_corr$HUC14))),
-                  options = list(
-                    placeholder = 'Please select a HUC below',
-                    onInitialize = I('function() { this.setValue(""); }')))
+# output$huc1<- renderUI({
+#   selectizeInput("huc",label =em("Select HUC:",style="color:Navy;font-weight: bold;"),
+#                  choices = list("Impaired HUCs for TDS:"=impaired_huc_list,
+#                                 "All Other HUCs:"=as.character(unique(roadsalt_corr$HUC14))),
+#                  options = list(
+#                    placeholder = 'Please select a HUC below',
+#                    onInitialize = I('function() { this.setValue(""); }')))
+# })
+ 
+# datasub<-reactive({
+#   foo <- subset(roadsalt_corr, HUC14 == input$huc)
+#   return(foo)
+# })
+# 
+# output$locid1<- renderUI({
+#   selectizeInput("locid",label = em("Select Locid:",style="color:Navy;font-weight: bold;"),
+#                  choices = unique(datasub()$locid),
+#                  selected = unique(datasub()$locid)[1])#,
+#                  #multiple = TRUE)
+# })
+# 
+# datasub2<-reactive({
+#   foo <- subset(datasub(), locid == input$locid)
+#   return(foo)
+# })
+###########################################################################################  
+### Create reactive dataframe for correlation plots based on user input for HUC14 ###
+ huc_corr<-reactive({
+   roadsalt_corr%>%
+     dplyr::filter(HUC14 == input$huc1)
  })
- 
- datasub<-reactive({
-   foo <- subset(roadsalt_corr, HUC14 == input$huc)
-   return(foo)
- })
- 
- output$locid1<- renderUI({
-   selectizeInput("locid",label = em("Select Locid:",style="color:Navy;font-weight: bold;"),
-                  choices = unique(datasub()$locid),
-                  selected = unique(datasub()$locid)[1])#,
-                  #multiple = TRUE)
- })
- 
- datasub2<-reactive({
-   foo <- subset(datasub(), locid == input$locid)
-   return(foo)
- })
- 
- 
 ###########################################################################################   
 ### Creates plots ### 
 ### Creates boxplots ###
@@ -575,10 +672,13 @@ server<- function(input,output,session){
   })
 ###########################################################################################    
 ### Create correlation plots ###
+### Make if/else statements to add statewide regression line to plots ###
   output$plot5 <- renderPlot({
-    ggplot(data= datasub2(),aes_string(x=input$x,y=input$y))+
-      geom_point()+
+    if(input$statewide == TRUE){
+    ggplot(data= huc_corr(),aes_string(x=input$x,y=input$y))+
+      geom_point(aes(color = locid))+
       geom_smooth(method = "lm", se = FALSE,formula=formula1) +
+      geom_smooth(data = roadsalt_corr,method = "lm",se =FALSE,formula = formula1,aes(color = "Statewide Correlation"))+
       stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
                    label.x.npc = 0.5, label.y.npc = 0.9,
                    eq.with.lhs = "italic(hat(y))~`=`~",
@@ -587,11 +687,238 @@ server<- function(input,output,session){
       stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
                    label.x.npc = 0.5, label.y.npc = 0.83,
                    formula = formula1, parse = TRUE, size = 5)+
-      ggtitle(input$locid,input$huc)+
-      shiny_plot_theme
+      ggtitle(input$huc1)+
+      shiny_plot_theme}
+    else{
+      ggplot(data= huc_corr(),aes_string(x=input$x,y=input$y))+
+        geom_point(aes(color = locid))+
+        geom_smooth(method = "lm", se = FALSE,formula=formula1) +
+        stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.9,
+                     eq.with.lhs = "italic(hat(y))~`=`~",
+                     eq.x.rhs = "~italic(x)",
+                     formula = formula1, parse = TRUE, size = 5) +
+        stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.83,
+                     formula = formula1, parse = TRUE, size = 5)+
+        ggtitle(input$huc1)+
+        shiny_plot_theme
+    }
   })
 ###########################################################################################  
-  ### This creates interactive map ###
+### Make plot for North Region correlations ###
+  output$plot7<-renderPlot({
+    if(input$statewide == TRUE){
+    ggplot(data = north_corr_road,aes_string(input$x,y=input$y))+
+      geom_point()+
+      geom_smooth(method = "lm", se = FALSE,formula=formula1) +
+      geom_smooth(data = roadsalt_corr,method = "lm",se =FALSE,
+                  formula = formula1,aes(color = "Statewide Correlation"))+
+      stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
+                   label.x.npc = 0.5, label.y.npc = 0.9,
+                   eq.with.lhs = "italic(hat(y))~`=`~",
+                   eq.x.rhs = "~italic(x)",
+                   formula = formula1, parse = TRUE, size = 5) +
+      stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+                   label.x.npc = 0.5, label.y.npc = 0.83,
+                   formula = formula1, parse = TRUE, size = 5)+
+      ggtitle("North Region (WMAs)")+
+      labs(caption = "WMAs:1-11")+
+      shiny_plot_theme}
+    else{
+      ggplot(data = north_corr_road,aes_string(input$x,y=input$y))+
+        geom_point()+
+        geom_smooth(method = "lm", se = FALSE,formula=formula1) +
+        stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.9,
+                     eq.with.lhs = "italic(hat(y))~`=`~",
+                     eq.x.rhs = "~italic(x)",
+                     formula = formula1, parse = TRUE, size = 5) +
+        stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.83,
+                     formula = formula1, parse = TRUE, size = 5)+
+        ggtitle("North Region (WMAs)")+
+        labs(caption = "WMAs:1-11")+
+        shiny_plot_theme
+    }
+  })
+###########################################################################################      
+### Make plot for South Region Correlations ###
+  output$plot8<-renderPlot({
+    if(input$statewide == TRUE){
+    ggplot(data = south_corr_road,aes_string(input$x,y=input$y))+
+      geom_point()+
+      geom_smooth(method = "lm", se = FALSE,formula=formula1)+
+      geom_smooth(data = roadsalt_corr,method = "lm",se =FALSE,
+                    formula = formula1,aes(color = "Statewide Correlation"))+
+      stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
+                   label.x.npc = 0.5, label.y.npc = 0.9,
+                   eq.with.lhs = "italic(hat(y))~`=`~",
+                   eq.x.rhs = "~italic(x)",
+                   formula = formula1, parse = TRUE, size = 5) +
+      stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+                   label.x.npc = 0.5, label.y.npc = 0.83,
+                   formula = formula1, parse = TRUE, size = 5)+
+      ggtitle("South Region (WMAs)")+
+      labs(caption = "WMAs:12-20")+
+      shiny_plot_theme}
+    else{
+      ggplot(data = south_corr_road,aes_string(input$x,y=input$y))+
+        geom_point()+
+        geom_smooth(method = "lm", se = FALSE,formula=formula1)+
+        stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.9,
+                     eq.with.lhs = "italic(hat(y))~`=`~",
+                     eq.x.rhs = "~italic(x)",
+                     formula = formula1, parse = TRUE, size = 5) +
+        stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.83,
+                     formula = formula1, parse = TRUE, size = 5)+
+        ggtitle("South Region (WMAs)")+
+        labs(caption = "WMAs:12-20")+
+        shiny_plot_theme
+    }
+  })
+###########################################################################################    
+### Make Physiographic Provinces Plots ###
+  output$plot9<-renderPlot({
+    if(input$statewide == TRUE){
+    ggplot(data = coastal_plain_df,aes_string(input$x,y=input$y))+
+      geom_point()+
+      geom_smooth(method = "lm", se = FALSE,formula=formula1)+
+      geom_smooth(data = roadsalt_corr,method = "lm",se =FALSE,
+                    formula = formula1,aes(color = "Statewide Correlation"))+
+      stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
+                   label.x.npc = 0.5, label.y.npc = 0.9,
+                   eq.with.lhs = "italic(hat(y))~`=`~",
+                   eq.x.rhs = "~italic(x)",
+                   formula = formula1, parse = TRUE, size = 5) +
+      stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+                   label.x.npc = 0.5, label.y.npc = 0.83,
+                   formula = formula1, parse = TRUE, size = 5)+
+      ggtitle("Coastal Plain")+
+      shiny_plot_theme}
+    else{
+      ggplot(data = coastal_plain_df,aes_string(input$x,y=input$y))+
+        geom_point()+
+        geom_smooth(method = "lm", se = FALSE,formula=formula1)+
+        stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.9,
+                     eq.with.lhs = "italic(hat(y))~`=`~",
+                     eq.x.rhs = "~italic(x)",
+                     formula = formula1, parse = TRUE, size = 5) +
+        stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.83,
+                     formula = formula1, parse = TRUE, size = 5)+
+        ggtitle("Coastal Plain")+
+        shiny_plot_theme
+    }
+  })
+  
+  output$plot10<-renderPlot({
+    if(input$statewide == TRUE){
+    ggplot(data = piedmont_df,aes_string(input$x,y=input$y))+
+      geom_point()+
+      geom_smooth(method = "lm", se = FALSE,formula=formula1)+
+      geom_smooth(data = roadsalt_corr,method = "lm",se =FALSE,
+                    formula = formula1,aes(color = "Statewide Correlation"))+
+      stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
+                   label.x.npc = 0.5, label.y.npc = 0.9,
+                   eq.with.lhs = "italic(hat(y))~`=`~",
+                   eq.x.rhs = "~italic(x)",
+                   formula = formula1, parse = TRUE, size = 5) +
+      stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+                   label.x.npc = 0.5, label.y.npc = 0.83,
+                   formula = formula1, parse = TRUE, size = 5)+
+      ggtitle("Piedmont")+
+      shiny_plot_theme}
+    else{
+      ggplot(data = piedmont_df,aes_string(input$x,y=input$y))+
+        geom_point()+
+        geom_smooth(method = "lm", se = FALSE,formula=formula1)+
+        stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.9,
+                     eq.with.lhs = "italic(hat(y))~`=`~",
+                     eq.x.rhs = "~italic(x)",
+                     formula = formula1, parse = TRUE, size = 5) +
+        stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.83,
+                     formula = formula1, parse = TRUE, size = 5)+
+        ggtitle("Piedmont")+
+        shiny_plot_theme
+    }
+  })
+  
+  output$plot11<-renderPlot({
+    if(input$statewide == TRUE){
+    ggplot(data = highlands_df,aes_string(input$x,y=input$y))+
+      geom_point()+
+      geom_smooth(method = "lm", se = FALSE,formula=formula1)+
+      geom_smooth(data = roadsalt_corr,method = "lm",se =FALSE,
+          formula = formula1,aes(color = "Statewide Correlation"))+
+      stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
+                   label.x.npc = 0.5, label.y.npc = 0.9,
+                   eq.with.lhs = "italic(hat(y))~`=`~",
+                   eq.x.rhs = "~italic(x)",
+                   formula = formula1, parse = TRUE, size = 5) +
+      stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+                   label.x.npc = 0.5, label.y.npc = 0.83,
+                   formula = formula1, parse = TRUE, size = 5)+
+      ggtitle("Highlands")+
+      shiny_plot_theme}
+    else{
+      ggplot(data = highlands_df,aes_string(input$x,y=input$y))+
+        geom_point()+
+        geom_smooth(method = "lm", se = FALSE,formula=formula1)+
+        stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.9,
+                     eq.with.lhs = "italic(hat(y))~`=`~",
+                     eq.x.rhs = "~italic(x)",
+                     formula = formula1, parse = TRUE, size = 5) +
+        stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.83,
+                     formula = formula1, parse = TRUE, size = 5)+
+        ggtitle("Highlands")+
+        shiny_plot_theme
+    }
+  })
+  
+    output$plot12<-renderPlot({
+      if(input$statewide == TRUE){
+      ggplot(data = valley_ridge_df,aes_string(input$x,y=input$y))+
+        geom_point()+
+        geom_smooth(method = "lm", se = FALSE,formula=formula1)+
+        geom_smooth(data = roadsalt_corr,method = "lm",se =FALSE,
+                      formula = formula1,aes(color = "Statewide Correlation"))+
+        stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.9,
+                     eq.with.lhs = "italic(hat(y))~`=`~",
+                     eq.x.rhs = "~italic(x)",
+                     formula = formula1, parse = TRUE, size = 5) +
+        stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.83,
+                     formula = formula1, parse = TRUE, size = 5)+
+        ggtitle("Valley & Ridge")+
+        shiny_plot_theme}
+      else{
+        ggplot(data = valley_ridge_df,aes_string(input$x,y=input$y))+
+          geom_point()+
+          geom_smooth(method = "lm", se = FALSE,formula=formula1)+
+          stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
+                       label.x.npc = 0.5, label.y.npc = 0.9,
+                       eq.with.lhs = "italic(hat(y))~`=`~",
+                       eq.x.rhs = "~italic(x)",
+                       formula = formula1, parse = TRUE, size = 5) +
+          stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+                       label.x.npc = 0.5, label.y.npc = 0.83,
+                       formula = formula1, parse = TRUE, size = 5)+
+          ggtitle("Valley & Ridge")+
+          shiny_plot_theme
+      }
+    })
+  
+###########################################################################################      
+     ### This creates interactive map ###
   output$leaf<- renderLeaflet({
     leaflet(options = leafletOptions(minZoom = 7))%>%
       addTiles()%>%

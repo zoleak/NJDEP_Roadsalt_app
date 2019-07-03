@@ -63,7 +63,7 @@ roadsalt_corr$WMA<-gsub("09","9",roadsalt_corr$WMA)
 ###########################################################################################
 ### Read in WMA land use data set that contains % impervious surface for each WMA ###
 wma_imperv_calc<-read_xlsx("WMA_%impervious_calc.xlsx",col_names = T)%>%
-  mutate(WMA = as.character(WMA),PercentIS = round(PercentIS))
+  dplyr::mutate(WMA = as.character(WMA),PercentIS = round(PercentIS))
 ### Join WMA land use data set to roadsalt_corr ###
 roadsalt_corr_wma_analysis<-left_join(roadsalt_corr,wma_imperv_calc,by = "WMA")
 ### Make dataframe calculating the median,mean,and maximum TDS for WMAs ###
@@ -73,6 +73,20 @@ wma_tds_stats<-roadsalt_corr_wma_analysis%>%
 ###########################################################################################
 ### Join roadsalt_corr_wma_analysis with wma_tds_stats to get summary stats with % impervious surface ###
 wma_final_df<-left_join(wma_tds_stats,wma_imperv_calc,by = "WMA")
+###########################################################################################
+### Read in WMA land use data that contains % impervious surface in 300' buffer for each WMA ###
+wma_buffer_calc<-read_xlsx("WMA_%impervious_calc.xlsx",sheet = "300'buffer",col_names = T)%>%
+  dplyr::mutate(WMA = as.character(WMA),PercentIS = round(PercentIS))
+### Join buffered WMA land use data set to roadsalt_corr ###
+buff_roadcorr_wma_anal<-left_join(roadsalt_corr,wma_buffer_calc,by="WMA")
+### Make dataframe calculating the median,mean,and maximum TDS for buffered WMAs ###
+buff_wma_tds_stats<-buff_roadcorr_wma_anal%>%
+  dplyr::group_by(WMA)%>%
+  dplyr::summarise(Median = median(tds),Mean = mean(tds), Max = max(tds))
+###########################################################################################
+### Join wma_buffer_calc with buff_wma_tds_stats to get summary stats with % impervious surface ###
+buff_wma_final_df<-left_join(buff_wma_tds_stats,wma_buffer_calc,by="WMA")
+
 ### Filter correlation data to have north/south based on WMA ###
 ## Removes WMA's that are south ###
 remove_south=c("12","13","14","15","16","17","18","19","20")
@@ -140,6 +154,13 @@ wma_corr_tds<-read_xlsx("WMA_corr_table_tds_sc.xlsx",col_names = T)%>%
 ###########################################################################################
 ### Read in cl vs. sc model info to add to plot ###
 cl_wma_corr<-read_xlsx("WMA_corr_table_cl_sc.xlsx",col_names = T)
+### Read in buff model info to add to plot ###
+buff_wma_corr_tds<-read_xlsx("buff_WMA_corr_table_tds_sc.xlsx",col_names = T)%>%
+  dplyr::mutate(PercentIS = as.numeric(PercentIS))%>%
+  dplyr::arrange(desc(PercentIS))%>%
+  dplyr::mutate(PercentIS = paste0(PercentIS,"%"))%>%
+  dplyr::mutate(r.squared = signif(r.squared,digits = 3))
+buff_wma_corr_cl<-read_xlsx("buff_WMA_corr_table_cl_sc.xlsx",col_names = T)
 ### Read in shapefiles and Impaired HUC table ###
 NJ_Map_Road<-st_read(getwd(),layer="2014_NJ_Integrated_Report_AU")
 Impaired_HUCS<-st_read(getwd(),layer = "Impaired_HUCS_Shapefile")
@@ -337,25 +358,28 @@ body<- dashboardBody(
               box(width = 6,plotOutput("plot3")%>%withSpinner(type = 5, color = "blue")),
               box(width = 6,plotOutput("plot4")%>%withSpinner(type = 5, color = "blue")))),
     tabItem(tabName = "corr",
-            fluidRow(
               tabBox(width = 12,tabPanel("Site Specific",plotOutput("plot5")%>%withSpinner(type = 5, color = "blue"),
                                          selectizeInput("huc1",label =em("Select HUC:",style="color:Navy;font-weight: bold;"),
                                                             choices = sort(as.character(unique(roadsalt_corr$HUC14))),
                                                             selected = "HUC02030103110020")),
-                     tabPanel("North/South Regions (WMAs)",plotOutput("plot7")%>%withSpinner(type = 5, color = "blue"),
-                              plotOutput("plot8")%>%withSpinner(type = 5, color = "blue")),
-                     tabPanel("Physiographic Provinces",fluidRow(plotOutput("plot9")%>%withSpinner(type = 5, color = "blue"),
-                                                                 plotOutput("plot10")%>%withSpinner(type = 5, color = "blue")),
-                              fluidRow(plotOutput("plot11")%>%withSpinner(type = 5, color = "blue"),
-                                       plotOutput("plot12")%>%withSpinner(type = 5, color = "blue"))),
+                     tabPanel("North/South Regions (WMAs)",fluidRow(column(6,plotOutput("plot7")%>%
+                                                                      withSpinner(type = 5, color = "blue")),
+                              column(6,plotOutput("plot8")%>%withSpinner(type = 5, color = "blue")))),
+                     tabPanel("Physiographic Provinces",fluidRow(column(6,plotOutput("plot9")%>%withSpinner(type = 5, color = "blue")),
+                                                                 column(6,plotOutput("plot10")%>%withSpinner(type = 5, color = "blue"))),
+                              fluidRow(column(6,plotOutput("plot11")%>%withSpinner(type = 5, color = "blue")),
+                                       column(6,plotOutput("plot12")%>%withSpinner(type = 5, color = "blue")))),
                      tabPanel("% Impervious Surface",plotOutput("plot6")%>%withSpinner(type = 5, color = "blue"),
                               selectInput("stats",label =em("Select Y Variable:",style="color:Navy;font-weight: bold;"),choices = c("Mean","Median","Max"),
                                           selected = "Mean"),
                               plotOutput("lastplot")%>%withSpinner(type = 5, color = "blue")),
-                     tabPanel("% Impervious Surface in 300' Buffer"),
+                     tabPanel("% Impervious Surface in 300' Buffer",plotOutput("bufferplot")%>%withSpinner(type = 5, color = "blue"),
+                              selectInput("stats2",label =em("Select Y Variable:",style="color:Navy;font-weight: bold;"),choices = c("Mean","Median","Max"),
+                                          selected = "Mean"),
+                              plotOutput("bufferplot2")%>%withSpinner(type = 5, color = "blue")),
                   awesomeCheckbox(inputId = "statewide",
                                   label = em("Show Statewide Regression Line",style = "color:Navy;font-weight: bold;"),
-                                  value = FALSE),downloadButton("downloadplot","Download Plot"))),
+                                  value = FALSE),downloadButton("downloadplot","Download Plot")),
             fluidRow(
               box(selectInput("x",label =em("Select X Variable:",style="color:Navy;font-weight: bold;"),
                               choices = c("tds","Chloride","Specific_conductance"),selected = "Specific_conductance")),
@@ -975,20 +999,76 @@ server<- function(input,output,session){
     ### Create table of model stats ###
     mytable<-ggtexttable(wma_corr_tds, 
                                 theme = ttheme("mBlue",padding = unit(c(10, 3), "mm")),rows=NULL)  
+    
+    mytable2<-ggtexttable(cl_wma_corr, 
+                          theme = ttheme("mBlue",padding = unit(c(10, 3), "mm")),rows=NULL)
     ### Make plot #
     output$lastplot<-renderPlot({
+      if(input$y == "tds"){
       pp<-ggplot(data = roadsalt_corr,aes_string(input$x,y=input$y))+
         geom_smooth(method = "lm", se = FALSE,formula=formula1,aes(color = WMA))+
         scale_color_discrete(breaks=c("1","2","3","4","5","6","7","8","9","10",
                                       "11","12","13","14","15","16","17","18","19","20"))
         
-          plot_grid(pp,mytable)              
-
-     # ggplotly(pp)
+          plot_grid(pp,mytable)}
+      else{
+        pp<-ggplot(data = roadsalt_corr,aes_string(input$x,y=input$y))+
+          geom_smooth(method = "lm", se = FALSE,formula=formula1,aes(color = WMA))+
+          scale_color_discrete(breaks=c("1","2","3","4","5","6","7","8","9","10",
+                                        "11","12","13","14","15","16","17","18","19","20"))
         
+        plot_grid(pp,mytable2)}
+      
     })
 ###########################################################################################          
-### This creates interactive map ###
+### Make %impervious plot in 300' buffer plot ###
+    output$bufferplot<-renderPlot({
+      y_axis<-input$stats2
+      bb<-ggplot(data = buff_wma_final_df,aes_string(x="PercentIS",y=y_axis))+
+        geom_smooth(method = "lm", se = FALSE,formula=formula1)+
+        stat_poly_eq(aes(label = paste(..eq.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.9,
+                     eq.with.lhs = "italic(hat(y))~`=`~",
+                     eq.x.rhs = "~italic(x)",
+                     formula = formula1, parse = TRUE, size = 5) +
+        stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+                     label.x.npc = 0.5, label.y.npc = 0.83,
+                     formula = formula1, parse = TRUE, size = 5)+
+        ggtitle(paste(y_axis,"TDS Vs. % Impervious Surface (2015) in each WMA\n(300'buffer)"))+
+        scale_x_continuous(labels=function(x) paste0(x,"%"))+
+        labs(x= "% Impervious Surface in 300'buffer")+
+        shiny_plot_theme
+      
+      bb<-bb+geom_point()
+      bb
+    })
+###########################################################################################          
+    ### Create table of model stats ###
+    mytable3<-ggtexttable(buff_wma_corr_tds, 
+                         theme = ttheme("mBlue",padding = unit(c(10, 3), "mm")),rows=NULL)  
+    
+    mytable4<-ggtexttable(buff_wma_corr_cl, 
+                          theme = ttheme("mBlue",padding = unit(c(10, 3), "mm")),rows=NULL)
+    ### Make plot #
+    output$bufferplot2<-renderPlot({
+      if(input$y == "tds"){
+        pp<-ggplot(data = roadsalt_corr,aes_string(input$x,y=input$y))+
+          geom_smooth(method = "lm", se = FALSE,formula=formula1,aes(color = WMA))+
+          scale_color_discrete(breaks=c("1","2","3","4","5","6","7","8","9","10",
+                                        "11","12","13","14","15","16","17","18","19","20"))
+        
+        plot_grid(pp,mytable3)}
+      else{
+        pp<-ggplot(data = roadsalt_corr,aes_string(input$x,y=input$y))+
+          geom_smooth(method = "lm", se = FALSE,formula=formula1,aes(color = WMA))+
+          scale_color_discrete(breaks=c("1","2","3","4","5","6","7","8","9","10",
+                                        "11","12","13","14","15","16","17","18","19","20"))
+        
+        plot_grid(pp,mytable4)}
+      
+    })
+###########################################################################################          
+    ### This creates interactive map ###
   output$leaf<- renderLeaflet({
     leaflet(options = leafletOptions(minZoom = 7))%>%
       addTiles()%>%

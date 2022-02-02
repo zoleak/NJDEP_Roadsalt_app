@@ -1,7 +1,7 @@
 ### Author: Kevin Zolea ###
 ### Shiny App for Roadsalt Project ###
 if (!require(pacman)) {
-  #install.packages('pacman')
+  install.packages('pacman')
   
 }
 pacman::p_load("ggplot2","tidyr","plyr","dplyr","readxl","shinycssloaders",

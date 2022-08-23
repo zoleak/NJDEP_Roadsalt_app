@@ -5,9 +5,9 @@ if (!require(pacman)) {
   
 }
 pacman::p_load("ggplot2","tidyr","plyr","dplyr","readxl","shinycssloaders",
-               "readr","cowplot","lubridate","scales","shinydashboardPlus",
+               "readr","cowplot","lubridate","scales",
                "gridExtra","stringr","ggpmisc","data.table","rlang","purrr",
-               "shiny","shinydashboard","DT","leaflet","rgdal","sf","rmapshaper",
+               "shiny","shinydashboard","shinydashboardPlus","DT","leaflet","rgdal","sf","rmapshaper",
                "rsconnect","shinyjs","shinyWidgets","plotly","ggpubr")
 
 library(ggplot2)
@@ -17,13 +17,13 @@ library(dplyr)
 library(readxl)
 library(shinycssloaders)
 library(readr)
+library(shiny)
+library(shinydashboard)
 library(shinydashboardPlus)
 library(ggpmisc)
 library(data.table)
-library(shiny)
 library(rlang)
 library(purrr)
-library(shinydashboard)
 library(DT)
 library(leaflet)
 library(sf)
@@ -75,7 +75,7 @@ wma_tds_stats<-roadsalt_corr_wma_analysis%>%
 wma_final_df<-left_join(wma_tds_stats,wma_imperv_calc,by = "WMA")
 ###########################################################################################
 ### Read in WMA land use data that contains % impervious surface in 300' buffer for each WMA ###
-wma_buffer_calc<-read_xlsx("WMA_%impervious_calc.xlsx",sheet = "300'buffer",col_names = T)%>%
+wma_buffer_calc<-read_xlsx("WMA_%impervious_calc.xlsx",sheet = "Sheet1",col_names = T)%>%
   dplyr::mutate(WMA = as.character(WMA),PercentIS = round(PercentIS))
 ### Join buffered WMA land use data set to roadsalt_corr ###
 buff_roadcorr_wma_anal<-left_join(roadsalt_corr,wma_buffer_calc,by="WMA")
@@ -210,237 +210,212 @@ impaired_huc_list<-unique(imp_huc_table$HUC14)
 ### Formula for correlation plots to get pasted on plot ###
 formula1 <- y ~ x
 ###########################################################################################
-### Create header for app ###
-header<- dashboardHeaderPlus(title = "NJDEP Road Salt Project",titleWidth = 400,
-                         dropdownMenu(
-                           type = "notifications",
-                           notificationItem(text = "More road salt info here!",
-                                            href = "https://www.thoughtco.com/environmental-effects-of-road-salt-1204123")),
-                         enable_rightsidebar = TRUE,
-                           rightSidebarIcon = "gears")
-###########################################################################################
-### Create sidebar for app ###
-sidebar<-dashboardSidebar(
-  sidebarMenu(id = "left_sidebar",
-    tags$li(class="dropdown",
-            tags$a(href="https://www.nj.gov/dep/", target="_blank",
-                   img(width= 100,height = 100,src="https://www.nj.gov/dep/awards/images/deplogoB.jpg",class="road_pics"))
-    ),
-    menuItem("Home",
-             tabName = "home",
-             icon = icon("home")
-               ),
-    menuItem("Data",
-             tabName = "data",
-             icon = icon("calendar")),
-    menuItem("Map",tabName = "my_map",icon=icon("globe")),
-    menuItem("Statewide Data Plots",
-             tabName = "boxplots",
-             icon = icon("bar-chart-o")),
-    menuItem("Correlation Plots",
-             tabName = "corr",
-             icon = icon("bar-chart-o"))),
-  br(),
-  div(style="text-align:center",
-      "The data used for this analysis is from NJDEP's quality-assured,freshwater water quality assessment dataset"),
-  br(),
-  fluidPage(column(3,offset = 3.8,
-  a(actionButton(inputId = "email1", label = "Contact", 
-                 icon = icon("envelope", lib = "font-awesome")),
-    href="mailto:kevin.zolea@gmail.com"))),
-  #a(href="https://www.linkedin.com/in/kevinmichaelzolea", icon("linkedin-square","fa-2x")),
-  HTML("<h4>&nbsp; &nbsp; &nbsp; Author: Kevin Zolea </h4>")
-  
-)
-###########################################################################################
-### Create body for app ###
-body<- dashboardBody(
-
-### Creates custom font ###
-  tags$head(tags$style(HTML(
-    
-    '.main-header .logo {
-  font-family: "Georgia", Times, "Times New Roman", serif;
-    font-weight: bold;
-    font-size: 24px;
-    color: #ad1d28;
-    }
-    
-    .skin-blue .main-header .logo{
-    background-color: Navy;
-    }
-    
-    .skin-blue .main-header .navbar{
-    background-color: Navy;
-    }
-    
-
-    \\h3 {
-    font-weight: bold;
-    color: Navy;
-    }
-    
-    \\h1 {
-    font-weight: bold;
-    color: Navy;
-    }
-    
-    .content-wrapper, .right-side {
-      background-color: #CCCCCC;
-    }
-    
-    .road_pics{
-        width: auto;
-        height: 100%;
-        max-height: 20vh;
-    }
-
-    .bodytext{
-      color: #404040;
-    '
-    
-  ))),
-### This uses custom CSS to create a landing page for app ###
-  #tags$head(tags$style(HTML('
-      #.modal.in .modal-dialog{
-                            #width:100%;
-                            #height:100%;
-                            #margin:0px;
-                            #}
-                            
-                            #.modal-content{
-                            #width:100%;
-                            #height:100%;
-                           # }
-                            #))),
-
-### Creates the different tabs on the left sidebar of app ###
-  tabItems(
-    tabItem(tabName = "home",
-            h1("Welcome to the NJDEP Road Salt Project App!"),
-            h3("Introduction:"),
-            div(class="bodytext",h4("This is a project of the Division of Water Monitoring and Standards",a("(DWMS)",href = "https://www.state.nj.us/dep/wms/",target = "_blank"),
-            "& the Bureau of Environmental Analysis, Restoration and Standards",a("(BEARS)",href = "https://www.state.nj.us/dep/wms/bears/index.html",target = "_blank"),
-    ",within the New Jersey Department of Environmental Protection",a("(NJDEP).",href = "https://www.nj.gov/dep/",target = "_blank"),
-    "For more information on road salt, click on the notification icon in the top header.")),
-            h3("How to use App:"),
-    div(class="bodytext",h4("Start by clicking through the side menu on the left and going through the different options available.
-    If you click on the Data tab, you can get a view of the data used for the analysis. There is also an option,
-    at the bottom of the interactive table, to download the data. By clicking on the Map tab, you can get a spatial view of all the HUCs in NJ, as well
-    as the impaired HUCs for TDS in the 2014 303(d) list. Click on the Statewide Data Plots tab and a right side bar will pop up 
-    giving you options to customize the different plots available. The Correlation Plots tab gives you options to see the different
-    correlations between the parameters.")),
-    br(),br(),br(),
-    img(width = 350, height = 200, src = "Picture2.png",class="road_pics"),
-    img(width = 350, height = 200,src = "Picture1.png",class="road_pics")),
-    tabItem(tabName = "data",
-            infoBox("Total # of HUCs:",810,color = "navy",icon = icon("map-marker")),
-            infoBox("Total # of Monitoring Stations:",3644,color = "navy",icon = icon("thermometer-empty")),
-            infoBox("Study Year Range:","1997-2018",color = "navy",icon = icon("calendar")),
-            DT::dataTableOutput("Table1")%>%
-              withSpinner(type = 5,color = "blue"),
-            downloadButton('downloadData','Download Data')),
-    tabItem(tabName = "my_map",
-            fluidRow(boxPlus(width=12,closable = T,
-                             collapsible = T,
-                             tags$b("The following polygons in the map are the"),
-                             a("assessment units impaired ",
-                               href = "https://www.state.nj.us/dep/wms/bears/assessment.htm",target = "_blank"),
-                             tags$b("for TDS\nin the 2014 303(d) list")))%>%
-            fluidRow(box(width=12,leafletOutput("leaf")%>%
-              withSpinner(type=5,color = "blue"))),
-            fluidRow(box(width = 12,DT::dataTableOutput("Table2")))),
-    tabItem(tabName = "boxplots",
-            fluidRow(
-              box(width = 6,plotOutput("plot1")%>%withSpinner(type = 5, color = "blue")),
-              box(width = 6, plotOutput("plot2")%>%withSpinner(type = 5, color = "blue"))),
-              fluidRow(
-              box(width = 6,plotOutput("plot3")%>%withSpinner(type = 5, color = "blue")),
-              box(width = 6,plotOutput("plot4")%>%withSpinner(type = 5, color = "blue")))),
-    tabItem(tabName = "corr",
-              tabBox(width = 12,tabPanel("Site Specific",plotOutput("plot5")%>%withSpinner(type = 5, color = "blue"),
-                                         selectizeInput("huc1",label =em("Select HUC:",style="color:Navy;font-weight: bold;"),
-                                                            choices = sort(as.character(unique(roadsalt_corr$HUC14))),
-                                                            selected = "HUC02030103110020")),
-                     tabPanel("North/South Regions (WMAs)",fluidRow(column(6,plotOutput("plot7")%>%
-                                                                      withSpinner(type = 5, color = "blue")),
-                              column(6,plotOutput("plot8")%>%withSpinner(type = 5, color = "blue")))),
-                     tabPanel("Physiographic Provinces",fluidRow(column(6,plotOutput("plot9")%>%withSpinner(type = 5, color = "blue")),
-                                                                 column(6,plotOutput("plot10")%>%withSpinner(type = 5, color = "blue"))),
-                              fluidRow(column(6,plotOutput("plot11")%>%withSpinner(type = 5, color = "blue")),
-                                       column(6,plotOutput("plot12")%>%withSpinner(type = 5, color = "blue")))),
-                     tabPanel("% Impervious Surface",plotOutput("plot6")%>%withSpinner(type = 5, color = "blue"),
-                              selectInput("stats",label =em("Select Y Variable:",style="color:Navy;font-weight: bold;"),choices = c("Mean","Median","Max"),
-                                          selected = "Mean"),
-                              plotOutput("lastplot")%>%withSpinner(type = 5, color = "blue")),
-                     tabPanel("% Impervious Surface in 300' Buffer",plotOutput("bufferplot")%>%withSpinner(type = 5, color = "blue"),
-                              selectInput("stats2",label =em("Select Y Variable:",style="color:Navy;font-weight: bold;"),choices = c("Mean","Median","Max"),
-                                          selected = "Mean"),
-                              plotOutput("bufferplot2")%>%withSpinner(type = 5, color = "blue")),
-                  awesomeCheckbox(inputId = "statewide",
-                                  label = em("Show Statewide Regression Line",style = "color:Navy;font-weight: bold;"),
-                                  value = FALSE),downloadButton("downloadplot","Download Plot")),
-            fluidRow(
-              box(selectInput("x",label =em("Select X Variable:",style="color:Navy;font-weight: bold;"),
-                              choices = c("tds","Chloride","Specific_conductance"),selected = "Specific_conductance")),
-              box(selectInput("y",label = em("Select Y Variable:",style = "color:Navy;font-weight: bold;"),
-                              choices =c("tds","Chloride","Specific_conductance") ,selected = "tds"))))),
-              #box(selectizeInput("huc1",label =em("Select HUC:",style="color:Navy;font-weight: bold;"),
-              #                                     choices = list("Impaired HUCs for TDS:"=as.character(unique(impaired_huc_list)),
-              #                                                    "All Other HUCs:"=as.character(unique(roadsalt_corr$HUC14))),
-              #                   selected = "HUC02030103110020"))))),
-                  
-              #box(uiOutput("huc1"))))),
-              #box(uiOutput("locid1"))))),
-  tags$head(
-    tags$style(HTML("
-                    .shiny-output-error-validation {
-                    color: red;
-                    }
-                    "))))
-### Creates rightside bar with widgets to customise the plots ###
-  rightsidebar=rightSidebar(
-    background = "dark",
-    rightSidebarTabContent(
-      id=1,
-      title = "Customize Plots",
-      icon = "desktop",
-      active = TRUE,
-      selectInput("parameter_input","Select Parameter",
-                  parameters,selected = "Chloride"),
-      sliderInput("alpha","Select Shade of Point",min = 0,max = 0.8,value=0.5),
-      sliderInput("date","Select Year Range",
-                  min = 1997,
-                  max = 2018,
-                  value = c(1997,2018),
-                  sep = "",
-                  step = 1)))
 ###########################################################################################
 ### Create ui ###
-ui<- dashboardPagePlus(
-                  shinyjs::useShinyjs(),
-                  header = header,
-                   sidebar = sidebar,
-                   body = body,
-                   rightsidebar = rightsidebar
-                   
-
-)
+ui= dashboardPage(
+                  header = dashboardHeader(title = "NJDEP Road Salt Project",titleWidth = 400,
+                                           dropdownMenu(
+                                             type = "notifications",
+                                             notificationItem(text = "More road salt info here!",
+                                                              href = "https://www.thoughtco.com/environmental-effects-of-road-salt-1204123"))),
+                   sidebar = dashboardSidebar(sidebarMenu(id = "left_sidebar",
+                                                          tags$li(class="dropdown",
+                                                                  tags$a(href="https://www.nj.gov/dep/", target="_blank",
+                                                                         img(width= 100,height = 100,src="https://www.nj.gov/dep/awards/images/deplogoB.jpg",class="road_pics"))
+                                                          ),
+                                                          menuItem("Home",
+                                                                   tabName = "home",
+                                                                   icon = icon("home")
+                                                          ),
+                                                          menuItem("Data",
+                                                                   tabName = "data",
+                                                                   icon = icon("calendar")),
+                                                          menuItem("Map",tabName = "my_map",icon=icon("globe")),
+                                                          menuItem("Statewide Data Plots",
+                                                                   tabName = "boxplots",
+                                                                   icon = icon("bar-chart-o")),
+                                                          menuItem("Correlation Plots",
+                                                                   tabName = "corr",
+                                                                   icon = icon("bar-chart-o"))),
+                                              br(),
+                                              div(style="text-align:center",
+                                                  "The data used for this analysis is from NJDEP's quality-assured,freshwater water quality assessment dataset"),
+                                              br(),
+                                              fluidPage(column(3,offset = 3.8,
+                                                               a(actionButton(inputId = "email1", label = "Contact", 
+                                                                              icon = icon("envelope", lib = "font-awesome")),
+                                                                 href="mailto:kevin.zolea@gmail.com"))),
+                                              #a(href="https://www.linkedin.com/in/kevinmichaelzolea", icon("linkedin-square","fa-2x")),
+                                              HTML("<h4>&nbsp; &nbsp; &nbsp; Author: Kevin Zolea </h4>")),
+                   body = dashboardBody(### Creates custom font ###
+                     useShinyjs(),
+                     tags$head(tags$style(HTML(
+                       
+                       '.main-header .logo {
+                       font-family: "Georgia", Times, "Times New Roman", serif;
+                       font-weight: bold;
+                       font-size: 24px;
+                       color: #ad1d28;
+                       }
+                       
+                       .skin-blue .main-header .logo{
+                       background-color: Navy;
+                       }
+                       
+                       .skin-blue .main-header .navbar{
+                       background-color: Navy;
+                       }
+                       
+                       
+                       \\h3 {
+                       font-weight: bold;
+                       color: Navy;
+                       }
+                       
+                       \\h1 {
+                       font-weight: bold;
+                       color: Navy;
+                       }
+                       
+                       .content-wrapper, .right-side {
+                       background-color: #CCCCCC;
+                       }
+                       
+                       .road_pics{
+                       width: auto;
+                       height: 100%;
+                       max-height: 20vh;
+                       }
+                       
+                       .bodytext{
+                       color: #404040;
+                       '
+                       
+                     ))),
+                     ### This uses custom CSS to create a landing page for app ###
+                     #tags$head(tags$style(HTML('
+                     #.modal.in .modal-dialog{
+                     #width:100%;
+                     #height:100%;
+                     #margin:0px;
+                     #}
+                     
+                     #.modal-content{
+                     #width:100%;
+                     #height:100%;
+                     # }
+                     #))),
+                     
+                     ### Creates the different tabs on the left sidebar of app ###
+                     tabItems(
+                       tabItem(tabName = "home",
+                               h1("Welcome to the NJDEP Road Salt Project App!"),
+                               h3("Introduction:"),
+                               div(class="bodytext",h4("This is a project of the Division of Water Monitoring and Standards",a("(DWMS)",href = "https://www.state.nj.us/dep/wms/",target = "_blank"),
+                                                       "& the Bureau of Environmental Analysis, Restoration and Standards",a("(BEARS)",href = "https://www.state.nj.us/dep/wms/bears/index.html",target = "_blank"),
+                                                       ",within the New Jersey Department of Environmental Protection",a("(NJDEP).",href = "https://www.nj.gov/dep/",target = "_blank"),
+                                                       "For more information on road salt, click on the notification icon in the top header.")),
+                               h3("How to use App:"),
+                               div(class="bodytext",h4("Start by clicking through the side menu on the left and going through the different options available.
+                                                       If you click on the Data tab, you can get a view of the data used for the analysis. There is also an option,
+                                                       at the bottom of the interactive table, to download the data. By clicking on the Map tab, you can get a spatial view of all the HUCs in NJ, as well
+                                                       as the impaired HUCs for TDS in the 2014 303(d) list. Click on the Statewide Data Plots tab and a right side bar will pop up 
+                                                       giving you options to customize the different plots available. The Correlation Plots tab gives you options to see the different
+                                                       correlations between the parameters.")),
+                               br(),br(),br(),
+                               img(width = 350, height = 200, src = "Picture2.png",class="road_pics"),
+                               img(width = 350, height = 200,src = "Picture1.png",class="road_pics")),
+                       tabItem(tabName = "data",
+                               infoBox("Total # of HUCs:",810,color = "navy",icon = icon("map-marker")),
+                               infoBox("Total # of Monitoring Stations:",3644,color = "navy",icon = icon("thermometer-empty")),
+                               infoBox("Study Year Range:","1997-2018",color = "navy",icon = icon("calendar")),
+                               DT::dataTableOutput("Table1")%>%
+                                 withSpinner(type = 5,color = "blue"),
+                               downloadButton('downloadData','Download Data')),
+                       tabItem(tabName = "my_map",
+                               fluidRow(box(width=12,closable = T,
+                                            collapsible = T,
+                                            tags$b("The following polygons in the map are the"),
+                                            a("assessment units impaired ",
+                                              href = "https://www.state.nj.us/dep/wms/bears/assessment.htm",target = "_blank"),
+                                            tags$b("for TDS\nin the 2014 303(d) list")))%>%
+                                 fluidRow(box(width=12,leafletOutput("leaf")%>%
+                                                withSpinner(type=5,color = "blue"))),
+                               fluidRow(box(width = 12,DT::dataTableOutput("Table2")))),
+                       tabItem(tabName = "boxplots",
+                               fluidRow(
+                                 box(width = 6,plotOutput("plot1")%>%withSpinner(type = 5, color = "blue")),
+                                 box(width = 6, plotOutput("plot2")%>%withSpinner(type = 5, color = "blue"))),
+                               fluidRow(
+                                 box(width = 6,plotOutput("plot3")%>%withSpinner(type = 5, color = "blue")),
+                                 box(width = 6,plotOutput("plot4")%>%withSpinner(type = 5, color = "blue")))),
+                       tabItem(tabName = "corr",
+                               tabBox(width = 12,tabPanel("Site Specific",plotOutput("plot5")%>%withSpinner(type = 5, color = "blue"),
+                                                          selectizeInput("huc1",label =em("Select HUC:",style="color:Navy;font-weight: bold;"),
+                                                                         choices = sort(as.character(unique(roadsalt_corr$HUC14))),
+                                                                         selected = "HUC02030103110020")),
+                                      tabPanel("North/South Regions (WMAs)",fluidRow(column(6,plotOutput("plot7")%>%
+                                                                                              withSpinner(type = 5, color = "blue")),
+                                                                                     column(6,plotOutput("plot8")%>%withSpinner(type = 5, color = "blue")))),
+                                      tabPanel("Physiographic Provinces",fluidRow(column(6,plotOutput("plot9")%>%withSpinner(type = 5, color = "blue")),
+                                                                                  column(6,plotOutput("plot10")%>%withSpinner(type = 5, color = "blue"))),
+                                               fluidRow(column(6,plotOutput("plot11")%>%withSpinner(type = 5, color = "blue")),
+                                                        column(6,plotOutput("plot12")%>%withSpinner(type = 5, color = "blue")))),
+                                      tabPanel("% Impervious Surface",plotOutput("plot6")%>%withSpinner(type = 5, color = "blue"),
+                                               selectInput("stats",label =em("Select Y Variable:",style="color:Navy;font-weight: bold;"),choices = c("Mean","Median","Max"),
+                                                           selected = "Mean"),
+                                               plotOutput("lastplot")%>%withSpinner(type = 5, color = "blue")),
+                                      tabPanel("% Impervious Surface in 300' Buffer",plotOutput("bufferplot")%>%withSpinner(type = 5, color = "blue"),
+                                               selectInput("stats2",label =em("Select Y Variable:",style="color:Navy;font-weight: bold;"),choices = c("Mean","Median","Max"),
+                                                           selected = "Mean"),
+                                               plotOutput("bufferplot2")%>%withSpinner(type = 5, color = "blue")),
+                                      awesomeCheckbox(inputId = "statewide",
+                                                      label = em("Show Statewide Regression Line",style = "color:Navy;font-weight: bold;"),
+                                                      value = FALSE),downloadButton("downloadplot","Download Plot")),
+                               fluidRow(
+                                 box(selectInput("x",label =em("Select X Variable:",style="color:Navy;font-weight: bold;"),
+                                                 choices = c("tds","Chloride","Specific_conductance"),selected = "Specific_conductance")),
+                                 box(selectInput("y",label = em("Select Y Variable:",style = "color:Navy;font-weight: bold;"),
+                                                 choices =c("tds","Chloride","Specific_conductance") ,selected = "tds"))))),
+                     #box(selectizeInput("huc1",label =em("Select HUC:",style="color:Navy;font-weight: bold;"),
+                     #                                     choices = list("Impaired HUCs for TDS:"=as.character(unique(impaired_huc_list)),
+                     #                                                    "All Other HUCs:"=as.character(unique(roadsalt_corr$HUC14))),
+                     #                   selected = "HUC02030103110020"))))),
+                     
+                     #box(uiOutput("huc1"))))),
+                     #box(uiOutput("locid1"))))),
+                     tags$head(
+                       tags$style(HTML("
+                                       .shiny-output-error-validation {
+                                       color: red;
+                                       }
+                                       ")))),
+                   controlbar =  dashboardControlbar(skin = "dark",
+                                                     id=1,
+                                                           title = "Customize Plots",
+                                                           selectInput("parameter_input","Select Parameter",
+                                                                       parameters,selected = "Chloride"),
+                                                           sliderInput("alpha","Select Shade of Point",min = 0,max = 0.8,value=0.5),
+                                                           sliderInput("date","Select Year Range",
+                                                                       min = 1997,
+                                                                       max = 2018,
+                                                                       value = c(1997,2018),
+                                                                       sep = "",
+                                                                       step = 1)))
 ###########################################################################################
 ### Create server of app ###
 server<- function(input,output,session){
   
-#  ### Creates option for rightsidebar to be opened once the plots tab in clicked on ###
-#  observe({
-#    if (input$left_sidebar == "boxplots") {
-#      shinyjs::addClass(selector = "aside.control-sidebar", class = "control-sidebar-open")
-#    } else {
-#      shinyjs::removeClass(selector = "aside.control-sidebar", class = "control-sidebar-open")
-#    }
-#  })
+#### Creates option for rightsidebar to be opened once the plots tab in clicked on ###
+  observe({
+    if (input$left_sidebar == "boxplots") {
+      shinyjs::addClass(selector = "aside.control-sidebar", class = "control-sidebar-open")
+    } else {
+      shinyjs::removeClass(selector = "aside.control-sidebar", class = "control-sidebar-open")
+    }
+  })
 ########################################################################################### 
 ### Create reactive dataframe ###
-  
   parameter_selected<- reactive({
     roadsalt_data%>%
       filter(charnam == input$parameter_input)%>%

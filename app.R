@@ -162,8 +162,8 @@ buff_wma_corr_tds<-read_xlsx("buff_WMA_corr_table_tds_sc.xlsx",col_names = T)%>%
   dplyr::mutate(r.squared = signif(r.squared,digits = 3))
 buff_wma_corr_cl<-read_xlsx("buff_WMA_corr_table_cl_sc.xlsx",col_names = T)
 ### Read in shapefiles and Impaired HUC table ###
-NJ_Map_Road<-st_read(getwd(),layer="2014_NJ_Integrated_Report_AU")
-Impaired_HUCS<-st_read(getwd(),layer = "Impaired_HUCS_Shapefile")
+NJ_Map_Road<-st_read("shapefiles/2014_NJ_Integrated_Report_AU.shp")
+Impaired_HUCS<-st_read("shapefiles/Impaired_HUCS_Shapefile.shp")
 imp_huc_table<-read_xls("imp_huc_table.xls",col_names = T)
 ###########################################################################################
 ### Change projection to work with leaflet ###

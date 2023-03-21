@@ -105,25 +105,24 @@ patterns <- c("USGS-" = "", "21NJDEP1-" = "", "NJDEP_BB-" = "", "NJDEP_BFBM-" = 
 # Use str_replace_all to replace all patterns in the NewStation column
 test_road_corr$NewStation <- str_replace_all(test_road_corr$locid, patterns)
 
-### Filter physio_monitoring_stations for just stations inside roadsalt_corr ###
-physio_wanted<-unique(test_road_corr$NewStation)
-physio_monitoring_stations<-physio_monitoring_stations%>%
-  dplyr::filter(NewStation %in% physio_wanted)
-### Now join physio_monitoring_stations to test_roadsalt_corr ###
-physio_corr<-left_join(test_road_corr,physio_monitoring_stations,by = "NewStation")
-###########################################################################################
-### Make filtered dataset for each Province ###
-coastal_plain_df<-physio_corr%>%
-  dplyr::filter(PROVINCE == "Coastal Plain")
+physio_corr <- test_road_corr %>%
+  inner_join(physio_monitoring_stations %>% 
+                select(NewStation, PROVINCE), 
+              by = "NewStation") %>%
+  filter(PROVINCE %in% c("Coastal Plain", "Piedmont", "Highlands", "Valley and Ridge")) %>%
+  select(-NewStation)
+  
+coastal_plain_df <- physio_corr %>%
+  filter(PROVINCE == "Coastal Plain")
 
-piedmont_df<-physio_corr%>%
-  dplyr::filter(PROVINCE == "Piedmont")
+piedmont_df <- physio_corr %>%
+  filter(PROVINCE == "Piedmont")
 
-highlands_df<-physio_corr%>%
-  dplyr::filter(PROVINCE == "Highlands")
+highlands_df <- physio_corr %>%
+  filter(PROVINCE == "Highlands")
 
-valley_ridge_df<-physio_corr%>%
-  dplyr::filter(PROVINCE == "Valley and Ridge")
+valley_ridge_df <- physio_corr %>%
+  filter(PROVINCE == "Valley and Ridge")
 ###########################################################################################
 ### Read in tds vs. sc. model info to add to plot ###
 wma_corr_tds<-read_xlsx("WMA_corr_table_tds_sc.xlsx",col_names = T)%>%

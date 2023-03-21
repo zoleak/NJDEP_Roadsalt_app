@@ -50,16 +50,8 @@ roadsalt_corr<-read_tsv("cleanest_data_for_correlations.tsv")%>%
   dplyr::mutate(ratio = format(tds/Specific_conductance,digits = 1))%>%
   dplyr::filter(!ratio >1 & !ratio < .4)
 ###########################################################################################
-### get rid of 0 in front of some WMA numbers ###
-roadsalt_corr$WMA<-gsub("01","1",roadsalt_corr$WMA)
-roadsalt_corr$WMA<-gsub("02","2",roadsalt_corr$WMA)
-roadsalt_corr$WMA<-gsub("03","3",roadsalt_corr$WMA)
-roadsalt_corr$WMA<-gsub("04","4",roadsalt_corr$WMA)
-roadsalt_corr$WMA<-gsub("05","5",roadsalt_corr$WMA)
-roadsalt_corr$WMA<-gsub("06","6",roadsalt_corr$WMA)
-roadsalt_corr$WMA<-gsub("07","7",roadsalt_corr$WMA)
-roadsalt_corr$WMA<-gsub("08","8",roadsalt_corr$WMA)
-roadsalt_corr$WMA<-gsub("09","9",roadsalt_corr$WMA)
+# Format WMA numbers with leading zeros using sprintf
+road_salt_corr$WMA <- sprintf("%02d", as.numeric(road_salt_corr$WMA))
 ###########################################################################################
 ### Read in WMA land use data set that contains % impervious surface for each WMA ###
 wma_imperv_calc<-read_xlsx("WMA_%impervious_calc.xlsx",col_names = T)%>%
@@ -104,26 +96,14 @@ south_corr_road<-roadsalt_corr %>%
 physio_monitoring_stations<-read_xlsx("physio_monit_stations.xlsx",col_names = T)
 ### Need to do a join to get physio_monitoring_stations data matched with roadsalt_corr data ###
 ### In order to this, have to make cuts on roadsalt_corr dataset to locids column so they can match with physio_monitoring_stations dataset ###
-test_road_corr<-roadsalt_corr
-test_road_corr$NewStation<-test_road_corr$locid
+# Define a named vector with the patterns to replace
+patterns <- c("USGS-" = "", "21NJDEP1-" = "", "NJDEP_BB-" = "", "NJDEP_BFBM-" = "",
+              "11NPSWRD-MORR_" = "", "BTMUA-" = "", "DRBC-" = "", "31DRBCSP-" = "",
+              "31DELRBC-" = "", "31DELRBC_WQX-" = "", "KWMNDATA-" = "", "GSWA-" = "",
+              "FOB-" = "", "SPC-" = "", "NJDEP_BEAR-" = "", "NJPC-" = "", "NJDEP_DSREH-" = "")
 
-test_road_corr$NewStation<-gsub("USGS-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-gsub("21NJDEP1-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-gsub("NJDEP_BB-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-gsub("NJDEP_BFBM-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-gsub("11NPSWRD-MORR_","",test_road_corr$NewStation)
-test_road_corr$NewStation<-gsub("BTMUA-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-gsub("DRBC-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-gsub("31DRBCSP-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-gsub("31DELRBC-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-gsub("31DELRBC_WQX-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-gsub("KWMNDATA-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-gsub("GSWA-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-gsub("FOB-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-sub("SPC-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-sub("NJDEP_BEAR-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-sub("NJPC-","",test_road_corr$NewStation)
-test_road_corr$NewStation<-sub("NJDEP_DSREH-","",test_road_corr$NewStation)
+# Use str_replace_all to replace all patterns in the NewStation column
+test_road_corr$NewStation <- str_replace_all(test_road_corr$locid, patterns)
 
 ### Filter physio_monitoring_stations for just stations inside roadsalt_corr ###
 physio_wanted<-unique(test_road_corr$NewStation)
